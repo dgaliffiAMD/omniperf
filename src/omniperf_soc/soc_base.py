@@ -270,7 +270,7 @@ def expand_channels(counter, n):
 
     for i in range(0, n):
         ara.append("{}[{}]".format(counter, i))
-    
+
     return ara
 
 # Set with limited size
@@ -299,7 +299,7 @@ class CounterFile:
 
     def add(self, counter) -> bool:
         block = getblock(counter)
-        
+
         # SQ and SQC belong to the same IP block
         if block == 'SQC':
             block = 'SQ'
@@ -315,8 +315,6 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
     accumulate_counters = []
 
     normal_counters = OrderedDict()
-
-    mpattern = r"^pmc:(.*)"
 
     for fname in pmc_files_list:
 
@@ -336,31 +334,30 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
 
             counters = m.group(1).split()
 
-            # Check for accumulate counter
             if "SQ_ACCUM_PREV_HIRES" in counters:
+                # Accumulate counters
                 accumulate_counters.append(counters.copy())
-                counters.clear()
-            
-            # PMC counters
-            for ctr in counters:
-                
-                # Channel counter 
-                if '[' in ctr:
+            else:
+                # Normal counters
+                for ctr in counters:
+
+                    # Channel counter e.g. TCC_ATOMIC[0]
+                    if '[' in ctr:
 
                     # Remove number, append "_sum" so we know to add the channel later
                     channel = int(ctr.split('[')[1].split(']')[0])
                     if channel == 0:
                         counter_name = ctr.split('[')[0] + "_sum"
                         try:
-                            normal_counters[counter_name] += 1
+                            normal_counters[ctr] += 1
                         except:
-                            normal_counters[counter_name] = 1
-                else:
-                    counter_name = ctr
-                    try:
-                        normal_counters[ctr] += 1
-                    except:
-                        normal_counters[ctr] = 1
+                            normal_counters[ctr] = 1
+
+    # De-duplicate. Remove accumulate counters from normal counters
+    for accus in accumulate_counters:
+        for accu in accus:
+            if accu in normal_counters:
+                del normal_counters[accu]
 
     output_files = []
 
@@ -385,6 +382,7 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
             output_files[-1].add(ctr)
 
 
+    # Output to files
     for i, f in enumerate(output_files):
         file_name = os.path.join(workload_perfmon_dir, "pmc_perf_{}.txt".format(i))
 
@@ -401,7 +399,7 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
                     pmc.append(ctr)
 
         stext = "pmc: " + " ".join(pmc)
-        
+
         # Write counters to file
         fd = open(file_name, "w")
         fd.write(stext + "\n\n")
@@ -409,9 +407,9 @@ def perfmon_coalesce(pmc_files_list, perfmon_config, workload_dir):
         fd.write("range:\n")
         fd.write("kernel:\n")
         fd.close()
-    
-    # add a timestamp file
-    fd = open(workload_perfmon_dir + "/timestamps.txt", "w")
+
+    # Add a timestamp file
+    fd = open(os.path.join(workload_perfmon_dir, "timestamps.txt"), "w")
     fd.write("pmc:\n\n")
     fd.write("gpu:\n")
     fd.write("range:\n")
